@@ -46,6 +46,16 @@ const explanations: Record<string, string> = {
     "A secret is being set in a shell configuration file. This means it's loaded every time you open a terminal.",
   "generic-secret":
     "A value that looks like a secret (API key, token, or password) was found. You should verify if it's sensitive.",
+  "vercel-token":
+    "Your Vercel deployment token is stored as readable text. Someone could deploy code to your projects or access your infrastructure.",
+  "railway-token":
+    "Your Railway API token is stored as readable text. Someone could manage your Railway services, databases, and deployments.",
+  "convex-deploy-key":
+    "Your Convex backend deploy key is stored as readable text. Someone could access your database and modify your backend.",
+  "brave-api-key":
+    "Your Brave Search API key is stored as readable text. Someone could use your search quota.",
+  "supabase-key":
+    "Your Supabase key is stored as readable text. Depending on its role (anon vs service_role), someone could access your database.",
 };
 
 export function getExplanation(patternId: string): string {

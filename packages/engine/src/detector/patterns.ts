@@ -200,6 +200,59 @@ export const PATTERNS: SecretPattern[] = [
     description: "Stripe restricted API key found in plaintext",
   },
 
+  // Vercel
+  {
+    id: "vercel-token",
+    name: "Vercel Token",
+    provider: "Vercel",
+    pattern: /vcp_[A-Za-z0-9]{48,}/,
+    severity: "critical",
+    description: "Vercel deployment token found in plaintext",
+  },
+
+  // Railway (only match UUIDs on lines that also mention "railway")
+  {
+    id: "railway-token",
+    name: "Railway Token",
+    provider: "Railway",
+    pattern: /(?:RAILWAY_TOKEN|railway[_-]?token|railway[_-]?api)\s*[=:]\s*['"]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})['"]?/i,
+    severity: "high",
+    description: "Railway API token found in plaintext",
+  },
+
+  // Convex
+  {
+    id: "convex-deploy-key",
+    name: "Convex Deploy Key",
+    provider: "Convex",
+    pattern: /(?:prod|dev):[a-z]+-[a-z]+-[0-9]+\|eyJ[A-Za-z0-9+/=]+/,
+    severity: "critical",
+    description: "Convex backend deploy key found in plaintext",
+  },
+
+  // Brave Search
+  {
+    id: "brave-api-key",
+    name: "Brave Search API Key",
+    provider: "Brave",
+    pattern: /BSA[A-Za-z0-9_-]{20,}/,
+    severity: "high",
+    description: "Brave Search API key found in plaintext",
+  },
+
+  // Supabase
+  {
+    id: "supabase-key",
+    name: "Supabase API Key",
+    provider: "Supabase",
+    pattern: /eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]{50,}\.[A-Za-z0-9_-]{20,}/,
+    severity: "high",
+    description: "Supabase JWT key found in plaintext",
+    contextAware: true,
+    contextKeywords: ["supabase", "SUPABASE", "sb_", "anon", "service_role"],
+    contextLines: 3,
+  },
+
   // Private keys
   {
     id: "private-key",

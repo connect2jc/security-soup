@@ -208,7 +208,74 @@ export async function auditOpenClaw(): Promise<AuditCheck[]> {
       "Review installed skills and remove unverified ones from ClawHub.",
   });
 
-  // 10. Trusted proxies
+  // 10. Exec-approvals wildcard check
+  const execApprovalsPath = path.join(home, ".openclaw", "exec-approvals.json");
+  const execApprovals = (await readJson(execApprovalsPath)) as Record<string, unknown> | null;
+  let hasWildcardExec = false;
+  if (execApprovals) {
+    const checkForWildcard = (obj: unknown): boolean => {
+      if (typeof obj === "string" && obj === "*") return true;
+      if (Array.isArray(obj)) return obj.some(checkForWildcard);
+      if (obj !== null && typeof obj === "object") {
+        for (const val of Object.values(obj as Record<string, unknown>)) {
+          if (typeof val === "object" && val !== null) {
+            const entry = val as Record<string, unknown>;
+            // Check for wildcard pattern in allowlists
+            if (entry["pattern"] === "*") return true;
+            if (Array.isArray(entry["allowlist"])) {
+              for (const item of entry["allowlist"] as Record<string, unknown>[]) {
+                if (item["pattern"] === "*") return true;
+              }
+            }
+          }
+          if (checkForWildcard(val)) return true;
+        }
+      }
+      return false;
+    };
+    hasWildcardExec = checkForWildcard(execApprovals);
+  }
+  checks.push({
+    id: "exec-approvals-wildcard",
+    name: "Execution Approval Restrictions",
+    passed: !hasWildcardExec,
+    severity: "critical",
+    description:
+      "exec-approvals.json contains a wildcard pattern (\"*\") that allows agents to execute any command without restriction. This effectively disables execution sandboxing.",
+    recommendation:
+      "Remove wildcard patterns from exec-approvals.json. Restrict each agent to specific commands they need (e.g., git, npm, node) instead of allowing everything.",
+  });
+
+  // 11. Device auto-pairing check
+  const devicesPath = path.join(home, ".openclaw", "devices", "paired.json");
+  const devices = (await readJson(devicesPath)) as Record<string, unknown>[] | Record<string, unknown> | null;
+  let hasAutoApproval = false;
+  if (config) {
+    const pairing = (config as Record<string, unknown>)["pairing"] as Record<string, unknown> | undefined;
+    hasAutoApproval = pairing?.["autoApprove"] === true ||
+      pairing?.["mode"] === "auto" ||
+      (config as Record<string, unknown>)["deviceAutoApprove"] === true;
+  }
+  // Also check gateway logs for auto-approval events
+  const gatewayLogPath = path.join(home, ".openclaw", "logs", "gateway.log");
+  if (!hasAutoApproval) {
+    try {
+      const log = await readFile(gatewayLogPath, "utf-8");
+      if (log.includes("auto-approved")) hasAutoApproval = true;
+    } catch { /* no log file */ }
+  }
+  checks.push({
+    id: "device-auto-pairing",
+    name: "Device Pairing Security",
+    passed: !hasAutoApproval,
+    severity: "critical",
+    description:
+      "Devices are being auto-approved with operator-level access. Any device that connects gets full admin privileges without manual review.",
+    recommendation:
+      "Disable auto-approval for device pairing. Require manual confirmation for each new device connection.",
+  });
+
+  // 12. Trusted proxies
   const gateway = config
     ? (config as Record<string, unknown>)["gateway"] as Record<string, unknown> | undefined
     : undefined;

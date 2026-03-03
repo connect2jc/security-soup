@@ -16,6 +16,9 @@ function getOpenClawPaths(): string[] {
     path.join(oc, "secrets.json"),
     path.join(oc, ".env"),
     path.join(oc, "MEMORY.md"),
+    path.join(oc, "exec-approvals.json"),
+    // Workspace memory (different from ~/.openclaw/MEMORY.md)
+    path.join(oc, "workspace", "MEMORY.md"),
   ];
 }
 
@@ -26,6 +29,13 @@ function getOpenClawDirs(): string[] {
     path.join(oc, "agents"),
     path.join(oc, "channels"),
     path.join(oc, "memory"),
+    // Credential files — GitHub PATs, Vercel tokens, Railway tokens, etc.
+    path.join(oc, "credentials"),
+    // Device pairing tokens with operator-level access
+    path.join(oc, "identity"),
+    path.join(oc, "devices"),
+    // Workspace memory files
+    path.join(oc, "workspace", "memory"),
   ];
 }
 
@@ -102,6 +112,12 @@ export async function scanOpenClaw(): Promise<Finding[]> {
 
     const files = await walkFiles(dir, { maxDepth: 3 });
     for (const file of files) {
+      // Skip session logs (conversation history) — too noisy with false positives
+      // Session data exposure is covered by audit checks instead
+      if (file.includes("/sessions/") || file.includes("\\sessions\\")) continue;
+      // Skip binary files (sqlite, etc.)
+      if (file.endsWith(".sqlite") || file.endsWith(".db") || file.endsWith(".sqlite3")) continue;
+
       if (file.endsWith(".json")) {
         findings.push(...(await scanJsonFile(file)));
       } else {

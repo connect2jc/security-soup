@@ -4,6 +4,8 @@ import type { Platform } from "../api";
 export type FileContext =
   | "openclaw-config"
   | "openclaw-auth"
+  | "openclaw-credentials"
+  | "openclaw-device"
   | "openclaw-env"
   | "openclaw-memory"
   | "mcp-config"
@@ -17,6 +19,8 @@ export function detectFileContext(filePath: string): FileContext {
   const p = filePath.toLowerCase();
   if (p.includes("[git:")) return "git-history";
   if (p.includes(".openclaw") && p.includes("auth-profiles")) return "openclaw-auth";
+  if (p.includes(".openclaw") && p.includes("credentials")) return "openclaw-credentials";
+  if (p.includes(".openclaw") && (p.includes("identity") || p.includes("devices"))) return "openclaw-device";
   if (p.includes(".openclaw") && p.endsWith(".env")) return "openclaw-env";
   if (p.includes(".openclaw") && (p.includes("memory") || p.endsWith(".md"))) return "openclaw-memory";
   if (p.includes(".openclaw")) return "openclaw-config";
@@ -49,6 +53,11 @@ const envVarNames: Record<string, string> = {
   "stripe-secret": "STRIPE_SECRET_KEY",
   "stripe-restricted": "STRIPE_RESTRICTED_KEY",
   "deepseek-api-key": "DEEPSEEK_API_KEY",
+  "vercel-token": "VERCEL_TOKEN",
+  "railway-token": "RAILWAY_TOKEN",
+  "convex-deploy-key": "CONVEX_DEPLOY_KEY",
+  "brave-api-key": "BRAVE_SEARCH_API_KEY",
+  "supabase-key": "SUPABASE_KEY",
 };
 
 /** Where to rotate each key */
@@ -71,6 +80,11 @@ const rotationUrls: Record<string, { label: string; url: string }> = {
   "stripe-secret": { label: "Stripe Dashboard", url: "dashboard.stripe.com/apikeys" },
   "stripe-restricted": { label: "Stripe Dashboard", url: "dashboard.stripe.com/apikeys" },
   "deepseek-api-key": { label: "DeepSeek Dashboard", url: "platform.deepseek.com" },
+  "vercel-token": { label: "Vercel Tokens", url: "vercel.com/account/tokens" },
+  "railway-token": { label: "Railway Tokens", url: "railway.com/account/tokens" },
+  "convex-deploy-key": { label: "Convex Dashboard", url: "dashboard.convex.dev" },
+  "brave-api-key": { label: "Brave Search API", url: "brave.com/search/api" },
+  "supabase-key": { label: "Supabase Dashboard", url: "supabase.com/dashboard" },
 };
 
 export interface FixStep {
@@ -294,6 +308,24 @@ export function getFixSteps(patternId: string, filePath: string, platform: Platf
       steps.push({
         text: `Delete the plaintext key from this file. When OpenClaw starts, it will read ${envVar} from your environment, which your shell loaded from ${platform === "darwin" ? "Keychain" : platform === "win32" ? "Credential Manager" : "the system keyring"}.`,
         type: "info",
+      });
+      break;
+
+    case "openclaw-credentials":
+      steps.push({
+        text: `This secret is in the OpenClaw credentials directory — plaintext service tokens. Move it to your ${platform === "darwin" ? "Keychain" : platform === "win32" ? "Credential Manager" : "system keyring"} and update OpenClaw to use an environment variable reference:`,
+        code: platform === "win32"
+          ? `# Delete the credential file after storing in Credential Manager\nRemove-Item "${filePath}"\n\n# Update OpenClaw config to use environment variable:\n# "apiKey": "\${${envVar}}"`
+          : `# Delete the credential file after storing in ${platform === "darwin" ? "Keychain" : "keyring"}\nrm "${filePath}"\n\n# Update OpenClaw config to use environment variable:\n# "apiKey": "\${${envVar}}"`,
+        type: "warning",
+      });
+      break;
+
+    case "openclaw-device":
+      steps.push({
+        text: `This is a device pairing token with operator-level access. If this device is no longer in use or you don't recognize it, revoke it immediately:`,
+        code: `# Review paired devices\nopenclaw devices list\n\n# Revoke any unrecognized device\nopenclaw devices revoke <device-id>\n\n# Disable auto-approval for new devices\n# In openclaw.json, set:\n# "pairing": { "autoApprove": false }`,
+        type: "warning",
       });
       break;
 
