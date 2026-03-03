@@ -73,7 +73,58 @@ const rotationUrls: Record<string, { label: string; url: string }> = {
 
 export interface FixStep {
   text: string;
-  code?: string; // Code snippet to show
+  code?: string;
+  type?: "warning" | "info" | "secure"; // Visual hint for the step
+}
+
+/**
+ * Get the secure storage step — uses OS keychain, not just another plaintext file.
+ */
+function getSecureStorageStep(envVar: string): FixStep {
+  return {
+    text: `Store the new key in your macOS Keychain (encrypted, not plaintext). This is the most secure option for local development:`,
+    type: "secure",
+    code: [
+      `# Save the key to macOS Keychain (you'll be prompted for the value)`,
+      `security add-generic-password -a "$USER" -s "${envVar}" \\`,
+      `  -w "your-new-key-here" -U`,
+      ``,
+      `# To retrieve it later (for verification):`,
+      `security find-generic-password -a "$USER" -s "${envVar}" -w`,
+    ].join("\n"),
+  };
+}
+
+/**
+ * Get the shell loader step — loads from Keychain into env var on shell start.
+ */
+function getKeychainLoaderStep(envVar: string): FixStep {
+  return {
+    text: `Add this line to your ~/.zshrc so the key is loaded from Keychain into your environment automatically (never stored as plaintext on disk):`,
+    code: [
+      `# Add to ~/.zshrc (or ~/.bashrc)`,
+      `export ${envVar}=$(security find-generic-password -a "$USER" -s "${envVar}" -w 2>/dev/null)`,
+      ``,
+      `# Then reload your shell`,
+      `source ~/.zshrc`,
+    ].join("\n"),
+  };
+}
+
+/**
+ * Alternative: 1Password / Bitwarden CLI for teams or if user prefers.
+ */
+function getPasswordManagerStep(envVar: string): FixStep {
+  return {
+    text: `Alternative: If you use a password manager like 1Password or Bitwarden, you can load secrets from there instead:`,
+    code: [
+      `# 1Password CLI (op)`,
+      `export ${envVar}=$(op read "op://Vault/Item/${envVar}")`,
+      ``,
+      `# Bitwarden CLI (bw)`,
+      `export ${envVar}=$(bw get password ${envVar})`,
+    ].join("\n"),
+  };
 }
 
 /**
@@ -84,116 +135,24 @@ export function getFixSteps(patternId: string, filePath: string): FixStep[] {
   const context = detectFileContext(filePath);
   const envVar = envVarNames[patternId] ?? "YOUR_SECRET";
   const rotation = rotationUrls[patternId];
-  const steps: FixStep[] = [];
-
-  // Step 1: Rotate the key (always first)
-  if (rotation) {
-    steps.push({
-      text: `Rotate this key at ${rotation.label}${rotation.url ? ` (${rotation.url})` : ""}. The old key may already be compromised.`,
-    });
-  }
-
-  // Step 2: Store securely (always)
-  steps.push({
-    text: `Add the new key as an environment variable in a secure location (a .env file that's in .gitignore, or your system keychain):`,
-    code: `# In your .env file (make sure .env is in .gitignore!)\n${envVar}=your-new-key-here`,
-  });
-
-  // Step 3: Context-specific replacement
-  switch (context) {
-    case "openclaw-auth":
-    case "openclaw-config":
-      steps.push({
-        text: `Replace the plaintext value in this JSON file with an environment variable reference. OpenClaw supports \${VAR} syntax:`,
-        code: `// Before (insecure - plaintext key in config)\n"apiKey": "sk-ant-oat01-XXXXX..."\n\n// After (secure - reads from environment)\n"apiKey": "\${${envVar}}"`,
-      });
-      steps.push({
-        text: `Make sure the environment variable is set before starting OpenClaw. You can add it to ~/.openclaw/.env:`,
-        code: `# ~/.openclaw/.env\n${envVar}=your-new-key-here`,
-      });
-      break;
-
-    case "openclaw-env":
-      steps.push({
-        text: `This .env file is in your OpenClaw directory. Make sure it has restricted permissions and is not committed to git:`,
-        code: `chmod 600 ~/.openclaw/.env\n\n# Verify .openclaw/.env is in .gitignore\necho ".openclaw/.env" >> .gitignore`,
-      });
-      break;
-
-    case "openclaw-memory":
-      steps.push({
-        text: `This secret was found in an OpenClaw memory file. Memory files can be read by AI agents. Remove the secret immediately:`,
-        code: `# Remove the line containing the secret from the memory file.\n# Never paste secrets into AI conversations or memory files.`,
-      });
-      break;
-
-    case "mcp-config":
-      steps.push({
-        text: `Replace the plaintext value in your MCP config with an environment variable reference. MCP configs support env blocks:`,
-        code: `// Before (insecure)\n"env": {\n  "${envVar}": "sk-XXXXX..."\n}\n\n// After (secure - MCP reads from your shell environment)\n"env": {\n  "${envVar}": "\${${envVar}}"\n}`,
-      });
-      steps.push({
-        text: `Set the variable in your shell profile (~/.zshrc or ~/.bashrc) so MCP clients can read it:`,
-        code: `# Add to ~/.zshrc (or ~/.bashrc)\nexport ${envVar}="your-new-key-here"\n\n# Then reload your shell\nsource ~/.zshrc`,
-      });
-      break;
-
-    case "env-file":
-      steps.push({
-        text: `This .env file contains the secret. Make sure it's never committed to git:`,
-        code: `# Add to .gitignore\n.env\n.env.*\n.env.local\n.env.production\n\n# Verify it's not already tracked\ngit rm --cached .env 2>/dev/null`,
-      });
-      steps.push({
-        text: `If this .env file is already in your git history, the old key is compromised. Rotate it (step 1) and consider cleaning git history.`,
-      });
-      break;
-
-    case "shell-rc":
-      steps.push({
-        text: `Remove the export line from your shell config and use a .env file instead:`,
-        code: `# Remove this line from ${filePath}:\n# export ${envVar}="sk-XXXXX..."\n\n# Instead, add to a .env file and load it:\n# In ${filePath}, add:\n[ -f ~/.env ] && export $(grep -v '^#' ~/.env | xargs)`,
-      });
-      break;
-
-    case "shell-history":
-      steps.push({
-        text: `This secret was found in your shell history. It was likely pasted into a terminal command. Clear it:`,
-        code: `# For zsh: edit history file and remove the line\nnano ~/.zsh_history\n# Search for the key and delete that line\n\n# For bash:\nnano ~/.bash_history`,
-      });
-      steps.push({
-        text: `The key was typed into a terminal, so it should be considered compromised. Make sure you rotated it in step 1.`,
-      });
-      break;
-
-    case "git-history":
-      steps.push({
-        text: `This secret is in your git history. Even if you removed it from current files, it's still in past commits. The key is compromised — rotating it (step 1) is critical.`,
-      });
-      steps.push({
-        text: `To clean git history (optional, but recommended for shared repos):`,
-        code: `# Using git-filter-repo (install: pip install git-filter-repo)\ngit filter-repo --invert-paths --path <file-with-secret>\n\n# Or use BFG Repo-Cleaner:\nbfg --replace-text passwords.txt`,
-      });
-      break;
-
-    case "source-code":
-    default:
-      steps.push({
-        text: `Replace the hardcoded value in your code with an environment variable read:`,
-        code: `// Before (insecure)\nconst apiKey = "sk-XXXXX...";\n\n// After (secure)\nconst apiKey = process.env.${envVar};\nif (!apiKey) throw new Error("${envVar} not set");`,
-      });
-      steps.push({
-        text: `Make sure the environment variable is set in your deployment environment (.env file, CI/CD secrets, or hosting platform).`,
-      });
-      break;
-  }
 
   // Private key gets special treatment
   if (patternId === "private-key") {
     return [
-      { text: `This is a private key — the most sensitive type of credential. If it was ever committed to git or shared, consider it compromised and regenerate it.` },
-      { text: `Move the key to a secure location with restricted permissions:`, code: `mv <keyfile> ~/.ssh/\nchmod 600 ~/.ssh/<keyfile>\nchmod 700 ~/.ssh/` },
-      { text: `Remove the key from this location. If it's in git history, use git-filter-repo or BFG to clean it.` },
-      { text: `Update any services using this key to point to the new location.` },
+      {
+        text: `This is a private key — the most sensitive type of credential. If it was ever committed to git or shared, consider it compromised and regenerate it.`,
+        type: "warning",
+      },
+      {
+        text: `Move the key to ~/.ssh/ with locked-down permissions (only your user can read it):`,
+        code: `mv <keyfile> ~/.ssh/\nchmod 600 ~/.ssh/<keyfile>\nchmod 700 ~/.ssh/`,
+      },
+      {
+        text: `Remove the key from this location. If it's in git history, use git-filter-repo or BFG to scrub it.`,
+      },
+      {
+        text: `Update any services using this key to point to the new ~/.ssh/ location.`,
+      },
     ];
   }
 
@@ -202,10 +161,147 @@ export function getFixSteps(patternId: string, filePath: string): FixStep[] {
     return [
       { text: `First, verify if this is actually a secret (it matched a generic pattern). Check if the value is sensitive.` },
       { text: `If it is a secret, identify the provider and rotate it.` },
-      { text: `Store the new value as an environment variable:`, code: `# In .env\n${envVar}=your-new-value\n\n# In code, read from environment:\nprocess.env.YOUR_SECRET` },
+      getSecureStorageStep(envVar),
+      getKeychainLoaderStep(envVar),
       { text: `Remove the plaintext value from this file.` },
     ];
   }
+
+  const steps: FixStep[] = [];
+
+  // Step 1: Rotate the key (always first)
+  if (rotation) {
+    steps.push({
+      text: `Rotate this key at ${rotation.label}${rotation.url ? ` (${rotation.url})` : ""} immediately. The old key should be considered compromised.`,
+      type: "warning",
+    });
+  }
+
+  // Step 2: Store in OS Keychain (actually secure, not just another file)
+  steps.push(getSecureStorageStep(envVar));
+
+  // Step 3: Load from Keychain into shell environment
+  steps.push(getKeychainLoaderStep(envVar));
+
+  // Step 4+: Context-specific wiring
+  switch (context) {
+    case "openclaw-auth":
+    case "openclaw-config":
+      steps.push({
+        text: `Now replace the plaintext value in this config file with an environment variable reference. OpenClaw reads \${VAR} from your environment:`,
+        code: [
+          `// Before (insecure — plaintext key sitting on disk)`,
+          `"apiKey": "sk-ant-oat01-XXXXX..."`,
+          ``,
+          `// After (secure — resolved from Keychain via your shell env)`,
+          `"apiKey": "\${${envVar}}"`,
+        ].join("\n"),
+      });
+      steps.push({
+        text: `Delete the plaintext key from this file. When OpenClaw starts, it will read ${envVar} from your environment, which your shell loaded from Keychain.`,
+        type: "info",
+      });
+      break;
+
+    case "openclaw-env":
+      steps.push({
+        text: `Since the key is now in your Keychain and loaded via ~/.zshrc, you can remove it from this .env file entirely. If you prefer to keep the .env approach, at least lock down permissions:`,
+        code: `# Option A: Remove from .env (best — key lives in Keychain)\n# Just delete the ${envVar}=... line\n\n# Option B: Keep .env but restrict access\nchmod 600 ~/.openclaw/.env`,
+      });
+      break;
+
+    case "openclaw-memory":
+      steps.push({
+        text: `This secret is in an OpenClaw memory file — AI agents can read these. Remove it immediately:`,
+        type: "warning",
+        code: `# Remove the line containing the secret from the memory file.\n# Never paste secrets into AI conversations or memory files.\n# The key now lives safely in your Keychain instead.`,
+      });
+      break;
+
+    case "mcp-config":
+      steps.push({
+        text: `Update your MCP config to read from the environment variable (which your shell loads from Keychain):`,
+        code: [
+          `// Before (insecure — key hardcoded in config)`,
+          `"env": {`,
+          `  "${envVar}": "sk-XXXXX..."`,
+          `}`,
+          ``,
+          `// After (secure — MCP reads from shell environment)`,
+          `// Simply remove the hardcoded value.`,
+          `// MCP servers inherit env vars from your shell,`,
+          `// which loads ${envVar} from Keychain automatically.`,
+        ].join("\n"),
+      });
+      break;
+
+    case "env-file":
+      steps.push({
+        text: `Since the key is now in your Keychain, you can remove it from this .env file. If you must keep a .env file (e.g. for Docker), make sure it never gets committed:`,
+        code: `# Add to .gitignore\n.env\n.env.*\n.env.local\n.env.production\n\n# Remove from git tracking if already committed\ngit rm --cached .env 2>/dev/null\n\n# Restrict file permissions\nchmod 600 .env`,
+      });
+      steps.push({
+        text: `If this .env was ever committed to git, the old key is compromised regardless. That's why step 1 (rotate) is critical.`,
+        type: "warning",
+      });
+      break;
+
+    case "shell-rc":
+      steps.push({
+        text: `Remove the hardcoded export from your shell config — the Keychain loader line from step 3 replaces it:`,
+        code: [
+          `# Remove this line from ${filePath}:`,
+          `export ${envVar}="sk-XXXXX..."  # <- DELETE THIS`,
+          ``,
+          `# The Keychain loader you added in step 3 replaces it:`,
+          `export ${envVar}=$(security find-generic-password -a "$USER" -s "${envVar}" -w 2>/dev/null)`,
+          ``,
+          `# The difference: the old line had the key in plaintext on disk.`,
+          `# The new line reads it from encrypted Keychain at shell startup.`,
+        ].join("\n"),
+      });
+      break;
+
+    case "shell-history":
+      steps.push({
+        text: `This secret was pasted into a terminal and is now in your shell history file. Clear it:`,
+        code: `# For zsh:\nLC_ALL=C sed -i '' '/${envVar}\\|sk-ant\\|sk-proj\\|sk-or/d' ~/.zsh_history\n\n# For bash:\nLC_ALL=C sed -i '' '/${envVar}\\|sk-ant\\|sk-proj\\|sk-or/d' ~/.bash_history\n\n# Then reload history\nfc -R`,
+      });
+      steps.push({
+        text: `The key was visible in a terminal, so it should be considered compromised. Make sure you rotated it in step 1.`,
+        type: "warning",
+      });
+      break;
+
+    case "git-history":
+      steps.push({
+        text: `This secret is baked into your git history — anyone who clones the repo can see it. Rotating (step 1) is mandatory, not optional.`,
+        type: "warning",
+      });
+      steps.push({
+        text: `To scrub the secret from git history (recommended for shared/public repos):`,
+        code: `# Using git-filter-repo (install: pip install git-filter-repo)\ngit filter-repo --invert-paths --path <file-with-secret>\n\n# Or BFG Repo-Cleaner (faster for large repos):\nbfg --replace-text passwords.txt\n\n# Then force-push (coordinate with your team first!)\ngit push --force --all`,
+      });
+      break;
+
+    case "source-code":
+    default:
+      steps.push({
+        text: `Replace the hardcoded value in your code with an environment variable read:`,
+        code: [
+          `// Before (insecure — key in source code)`,
+          `const apiKey = "sk-XXXXX...";`,
+          ``,
+          `// After (secure — read from environment, loaded from Keychain)`,
+          `const apiKey = process.env.${envVar};`,
+          `if (!apiKey) throw new Error("${envVar} not set — add it to your Keychain");`,
+        ].join("\n"),
+      });
+      break;
+  }
+
+  // Final step: password manager alternative for teams
+  steps.push(getPasswordManagerStep(envVar));
 
   return steps;
 }
