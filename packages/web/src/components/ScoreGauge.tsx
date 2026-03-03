@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 
 function gaugeColor(score: number): string {
   if (score >= 90) return "#22c55e";
@@ -25,7 +25,6 @@ export default function ScoreGauge({
 }) {
   const [animatedScore, setAnimatedScore] = useState(0);
   const [revealed, setRevealed] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const radius = 80;
   const strokeWidth = 10;
@@ -36,7 +35,6 @@ export default function ScoreGauge({
   const color = gaugeColor(score);
   const [gradStart, gradEnd] = gaugeGradient(score);
 
-  // Animate score count-up
   useEffect(() => {
     const start = performance.now();
     const duration = 1800;
@@ -50,84 +48,10 @@ export default function ScoreGauge({
     setTimeout(() => setRevealed(true), 300);
   }, [score]);
 
-  // Particle effect
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = 280 * dpr;
-    canvas.height = 280 * dpr;
-    ctx.scale(dpr, dpr);
-
-    interface Particle {
-      x: number; y: number; vx: number; vy: number;
-      life: number; maxLife: number; size: number; color: string;
-    }
-    const particles: Particle[] = [];
-
-    const addParticle = () => {
-      const angle = Math.random() * Math.PI * 2;
-      const r = 88 + Math.random() * 12;
-      particles.push({
-        x: 140 + Math.cos(angle) * r,
-        y: 140 + Math.sin(angle) * r,
-        vx: (Math.random() - 0.5) * 0.6,
-        vy: -Math.random() * 1.2 - 0.3,
-        life: 0,
-        maxLife: 50 + Math.random() * 50,
-        size: 1 + Math.random() * 2,
-        color,
-      });
-    };
-
-    let frame: number;
-    const loop = () => {
-      ctx.clearRect(0, 0, 280, 280);
-      if (Math.random() < 0.25) addParticle();
-
-      for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.life++;
-        const alpha = 1 - p.life / p.maxLife;
-        if (alpha <= 0) { particles.splice(i, 1); continue; }
-        ctx.globalAlpha = alpha * 0.5;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      frame = requestAnimationFrame(loop);
-    };
-    frame = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(frame);
-  }, [color]);
-
   return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: 280, height: 280 }}>
-      {/* Particle canvas */}
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 pointer-events-none"
-        style={{ width: 280, height: 280 }}
-      />
-
-      {/* Outer breathing glow */}
-      <div
-        className="absolute rounded-full anim-breathe"
-        style={{
-          width: 220, height: 220, top: 30, left: 30,
-          "--breathe-color": `${color}22`,
-        } as React.CSSProperties}
-      />
-
+    <div className="relative inline-flex items-center justify-center" style={{ width: 220, height: 220 }}>
       {/* SVG gauge */}
-      <svg width="220" height="220" viewBox={`0 0 ${viewSize} ${viewSize}`} className="relative z-10">
+      <svg width="220" height="220" viewBox={`0 0 ${viewSize} ${viewSize}`}>
         <defs>
           <linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor={gradStart} />
@@ -145,7 +69,7 @@ export default function ScoreGauge({
         {/* Track */}
         <circle
           cx={center} cy={center} r={radius}
-          fill="none" stroke="rgba(51,65,85,0.4)" strokeWidth={strokeWidth}
+          fill="none" stroke="var(--gauge-track)" strokeWidth={strokeWidth}
         />
 
         {/* Tick marks */}
@@ -195,7 +119,7 @@ export default function ScoreGauge({
       </svg>
 
       {/* Center content */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span
           className={`text-6xl font-black tabular-nums tracking-tight transition-all duration-700 ${revealed ? "anim-numberReveal" : "opacity-0"}`}
           style={{ color, textShadow: `0 0 30px ${color}44` }}

@@ -39,11 +39,15 @@ export default function FindingsList({ findings }: { findings: Finding[] }) {
               key={f.key}
               onClick={() => setFilter(f.key)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
-                isActive ? f.activeBg : "bg-slate-800/40 text-slate-400 hover:bg-slate-700/40 hover:text-slate-300"
+                isActive ? f.activeBg : ""
               }`}
+              style={isActive ? {} : { background: "var(--badge-bg)", color: "var(--text-muted)" }}
             >
               {f.label}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${isActive ? "bg-white/10" : "bg-slate-700/50"}`}>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-md ${isActive ? "bg-white/10" : ""}`}
+                style={isActive ? {} : { background: "var(--border-secondary)" }}
+              >
                 {count}
               </span>
             </button>
@@ -55,7 +59,7 @@ export default function FindingsList({ findings }: { findings: Finding[] }) {
       <div className="space-y-2">
         {filtered.length === 0 ? (
           <div className="glass rounded-xl p-12 text-center">
-            <p className="text-slate-500">No findings match this filter.</p>
+            <p style={{ color: "var(--text-muted)" }}>No findings match this filter.</p>
           </div>
         ) : (
           filtered.map((f, i) => <FindingCard key={f.id} finding={f} index={i} />)
