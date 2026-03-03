@@ -22,7 +22,7 @@ const webDistPath = resolve(__dirname, "..", "..", "web", "dist");
 if (existsSync(webDistPath)) {
   app.use(express.static(webDistPath));
   // SPA fallback
-  app.get("*", (_req, res) => {
+  app.get("/{*splat}", (_req, res) => {
     res.sendFile(resolve(webDistPath, "index.html"));
   });
 }
