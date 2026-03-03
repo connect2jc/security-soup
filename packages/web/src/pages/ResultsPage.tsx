@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { ScanResult } from "../types";
 import ScoreGauge from "../components/ScoreGauge";
 import FindingsList from "../components/FindingsList";
@@ -156,26 +156,63 @@ export default function ResultsPage() {
         )}
 
         {/* ─── Audit Section ──────────────────────────────────── */}
-        {result.audit.length > 0 && (
-          <div className="mt-8 anim-fadeInUp" style={{ animationDelay: "500ms" }}>
-            <div className="flex items-center gap-3 mb-5">
-              <h2 className="text-xl font-bold tracking-tight">Configuration Audit</h2>
-              <span className={`text-xs font-bold px-2.5 py-1 rounded-lg tabular-nums ${
-                auditPassed === auditTotal
-                  ? "bg-green-500/15 text-green-400"
-                  : "bg-slate-700/50 text-slate-400"
-              }`}>
-                {auditPassed}/{auditTotal}
-              </span>
-            </div>
+        {result.audit.length > 0 && (() => {
+          const criticalAudits = result.audit.filter((c) => !c.passed && c.severity === "critical");
+          const warnAudits = result.audit.filter((c) => !c.passed && c.severity !== "critical");
+          const passedAudits = result.audit.filter((c) => c.passed);
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {result.audit.map((check, i) => (
-                <AuditCard key={check.id} check={check} index={i} />
-              ))}
+          return (
+            <div className="mt-8 anim-fadeInUp" style={{ animationDelay: "500ms" }}>
+              <div className="flex items-center gap-3 mb-5">
+                <h2 className="text-xl font-bold tracking-tight">Security Audit</h2>
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-lg tabular-nums ${
+                  auditPassed === auditTotal
+                    ? "bg-green-500/15 text-green-400"
+                    : "bg-slate-700/50 text-slate-400"
+                }`}>
+                  {auditPassed}/{auditTotal}
+                </span>
+                {criticalAudits.length > 0 && (
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-red-500/15 text-red-400">
+                    {criticalAudits.length} critical
+                  </span>
+                )}
+                {warnAudits.length > 0 && (
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-orange-500/15 text-orange-400">
+                    {warnAudits.length} warn
+                  </span>
+                )}
+              </div>
+
+              {/* Critical audit failures - full width */}
+              {criticalAudits.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {criticalAudits.map((check, i) => (
+                    <AuditCard key={check.id} check={check} index={i} variant="critical" />
+                  ))}
+                </div>
+              )}
+
+              {/* Warnings - full width */}
+              {warnAudits.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {warnAudits.map((check, i) => (
+                    <AuditCard key={check.id} check={check} index={i + criticalAudits.length} variant="warn" />
+                  ))}
+                </div>
+              )}
+
+              {/* Passed checks - compact 2-column grid */}
+              {passedAudits.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {passedAudits.map((check, i) => (
+                    <AuditCard key={check.id} check={check} index={i + criticalAudits.length + warnAudits.length} variant="pass" />
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Bottom spacer */}
         <div className="h-12" />
@@ -270,43 +307,132 @@ function SummaryItem({ label, value }: { label: string; value: number | string }
 
 // ─── Audit Card ───────────────────────────────────────────────────────
 
+const severityIcon = {
+  critical: { bg: "bg-red-500/15", text: "text-red-400", border: "border-l-red-500/40" },
+  warn: { bg: "bg-orange-500/15", text: "text-orange-400", border: "border-l-orange-500/40" },
+  pass: { bg: "bg-green-500/15", text: "text-green-400", border: "border-l-green-500/30" },
+};
+
 function AuditCard({
   check,
   index,
+  variant,
 }: {
-  check: { id: string; name: string; passed: boolean; recommendation: string };
+  check: { id: string; name: string; passed: boolean; severity: string; description: string; recommendation: string };
   index: number;
+  variant: "critical" | "warn" | "pass";
 }) {
+  const [open, setOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contentHeight, setContentHeight] = useState(0);
+  const style = severityIcon[variant];
+
+  // Multi-line description means this check has details worth expanding
+  const hasDetails = !check.passed && (check.description.includes("\n") || check.description.length > 100);
+
+  useEffect(() => {
+    if (contentRef.current) {
+      setContentHeight(contentRef.current.scrollHeight);
+    }
+  }, [open]);
+
   return (
     <div
-      className={`glass rounded-xl p-4 flex items-start gap-3 transition-all anim-cardReveal ${
-        check.passed
-          ? "border-green-500/0 hover:border-green-500/10"
-          : "border-red-500/10 hover:border-red-500/20"
-      }`}
+      className={`glass rounded-xl overflow-hidden transition-all anim-cardReveal ${
+        !check.passed ? `border-l-[3px] ${style.border}` : ""
+      } ${open ? "ring-1 ring-slate-600/30" : ""}`}
       style={{ animationDelay: `${600 + index * 80}ms` }}
     >
-      <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
-        check.passed ? "bg-green-500/15" : "bg-red-500/15"
-      }`}>
-        {check.passed ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-green-400 anim-checkPop" style={{ animationDelay: `${700 + index * 80}ms` }}>
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-        ) : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-red-400 anim-failShake" style={{ animationDelay: `${700 + index * 80}ms` }}>
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
+      <button
+        onClick={() => hasDetails && setOpen(!open)}
+        className={`w-full p-4 flex items-start gap-3 text-left ${hasDetails ? "group cursor-pointer" : "cursor-default"}`}
+      >
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${style.bg}`}>
+          {check.passed ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={`${style.text} anim-checkPop`} style={{ animationDelay: `${700 + index * 80}ms` }}>
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          ) : variant === "critical" ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={`${style.text} anim-failShake`} style={{ animationDelay: `${700 + index * 80}ms` }}>
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={`${style.text}`}>
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          {!check.passed && (
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${style.text} mb-1 block`}>
+              {variant === "critical" ? "CRITICAL" : "WARNING"}
+            </span>
+          )}
+          <p className={`text-sm font-semibold ${check.passed ? "text-slate-300" : "text-slate-200"}`}>
+            {check.name}
+          </p>
+          {!check.passed && !hasDetails && (
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">{check.recommendation}</p>
+          )}
+          {!check.passed && hasDetails && !open && (
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed line-clamp-2">
+              {check.description.split("\n")[0]}
+            </p>
+          )}
+        </div>
+        {hasDetails && (
+          <div className={`w-7 h-7 rounded-lg bg-slate-700/30 flex items-center justify-center transition-all duration-300 flex-shrink-0 ${open ? "rotate-180 bg-slate-600/40" : "group-hover:bg-slate-700/50"}`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-400">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </div>
         )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-semibold ${check.passed ? "text-slate-300" : "text-slate-200"}`}>
-          {check.name}
-        </p>
-        {!check.passed && (
-          <p className="text-xs text-slate-500 mt-1 leading-relaxed">{check.recommendation}</p>
-        )}
-      </div>
+      </button>
+
+      {/* Expandable details */}
+      {hasDetails && (
+        <div
+          className="overflow-hidden"
+          style={{
+            maxHeight: open ? contentHeight + 20 : 0,
+            opacity: open ? 1 : 0,
+            transition: "max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease",
+          }}
+        >
+          <div ref={contentRef} className="px-4 pb-4 pt-1 border-t border-slate-700/20 space-y-3">
+            {/* Description lines rendered as structured content */}
+            <div className="bg-slate-900/60 rounded-lg px-3 py-2.5 space-y-1">
+              {check.description.split("\n").map((line, i) => {
+                const trimmed = line.trim();
+                if (trimmed.startsWith("- ")) {
+                  // Bullet point — could be a code location or context item
+                  const isCodeRef = trimmed.includes(":") && (trimmed.includes(".js:") || trimmed.includes(".ts:") || trimmed.includes(".py:"));
+                  return (
+                    <div key={i} className="flex gap-2 text-xs">
+                      <span className="text-slate-600 flex-shrink-0 mt-0.5">{"\u2022"}</span>
+                      <span className={isCodeRef ? "text-amber-400/80 font-mono" : "text-slate-400"}>
+                        {trimmed.slice(2)}
+                      </span>
+                    </div>
+                  );
+                }
+                if (trimmed.startsWith("[") || trimmed === "") return null;
+                return (
+                  <p key={i} className="text-xs text-slate-400 leading-relaxed">
+                    {trimmed}
+                  </p>
+                );
+              })}
+            </div>
+
+            {/* Fix recommendation */}
+            <div className="bg-slate-800/40 rounded-lg px-3 py-2.5">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Fix</span>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">{check.recommendation}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

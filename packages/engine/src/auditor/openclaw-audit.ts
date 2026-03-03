@@ -27,6 +27,23 @@ async function readJson(filePath: string): Promise<unknown> {
 
 type OpenClawConfig = Record<string, unknown>;
 
+interface AgentConfig {
+  sandbox?: { mode?: string } | boolean;
+  tools?: Record<string, unknown>;
+  runtime?: string[];
+  fs?: {
+    workspaceOnly?: boolean;
+    permissions?: string[];
+  } | string[];
+  [key: string]: unknown;
+}
+
+interface ChannelConfig {
+  groupPolicy?: string;
+  groups?: unknown[];
+  [key: string]: unknown;
+}
+
 /**
  * Run OpenClaw security configuration audit checks.
  */
@@ -189,6 +206,156 @@ export async function auditOpenClaw(): Promise<AuditCheck[]> {
     description: "Only verified ClawHub skills should be installed",
     recommendation:
       "Review installed skills and remove unverified ones from ClawHub.",
+  });
+
+  // 10. Trusted proxies
+  const gateway = config
+    ? (config as Record<string, unknown>)["gateway"] as Record<string, unknown> | undefined
+    : undefined;
+  const bind = gateway?.["bind"] as string | undefined ??
+    (config as Record<string, unknown>)?.["host"] as string | undefined;
+  const trustedProxies = gateway?.["trustedProxies"] as string[] | undefined;
+  const isLoopback = !bind || bind === "127.0.0.1" || bind === "localhost" || bind === "::1";
+  // Only warn if loopback + no trusted proxies (reverse proxy scenario)
+  checks.push({
+    id: "trusted-proxies",
+    name: "Reverse Proxy Headers Trusted",
+    passed: !isLoopback || (Array.isArray(trustedProxies) && trustedProxies.length > 0),
+    severity: "high",
+    description:
+      "If you expose the Control UI through a reverse proxy, trusted proxies must be configured so local-client checks cannot be spoofed",
+    recommendation:
+      "Set gateway.trustedProxies to your proxy IPs, or keep the Control UI local-only.",
+  });
+
+  // 11. Multi-user / Trust model analysis
+  const agents = config
+    ? (config as Record<string, unknown>)["agents"] as Record<string, unknown> | undefined
+    : undefined;
+  const channels = config
+    ? (config as Record<string, unknown>)["channels"] as Record<string, unknown> | undefined
+    : undefined;
+
+  // Detect multi-user heuristic signals
+  const multiUserSignals: string[] = [];
+  if (channels) {
+    for (const [channelName, channelVal] of Object.entries(channels)) {
+      const ch = channelVal as ChannelConfig | undefined;
+      if (ch?.groupPolicy === "allowlist" && Array.isArray(ch.groups) && ch.groups.length > 0) {
+        multiUserSignals.push(
+          `channels.${channelName}.groupPolicy="allowlist" with configured group targets`,
+        );
+      }
+    }
+  }
+
+  // Check per-agent sandbox/tool exposure
+  const exposedContexts: string[] = [];
+  const agentDefaults = agents?.["defaults"] as AgentConfig | undefined;
+  const agentList = agents?.["list"] as Record<string, AgentConfig> | undefined;
+
+  const checkAgentExposure = (name: string, agent: AgentConfig | undefined) => {
+    if (!agent) return;
+    const sandboxOff =
+      agent.sandbox === false ||
+      (typeof agent.sandbox === "object" && agent.sandbox?.mode !== "all") ||
+      agent.sandbox === undefined;
+    const hasRuntime = Array.isArray(agent.runtime) && agent.runtime.length > 0;
+    const runtimeTools = Array.isArray(agent.runtime) ? agent.runtime : [];
+    const fsPerms = Array.isArray(agent.fs) ? agent.fs : (agent.fs as Record<string, unknown>)?.permissions ?? [];
+    const fsWorkspaceOnly = typeof agent.fs === "object" && !Array.isArray(agent.fs)
+      ? agent.fs.workspaceOnly
+      : true;
+
+    if (sandboxOff && (hasRuntime || (Array.isArray(fsPerms) && fsPerms.length > 0))) {
+      const parts: string[] = [];
+      parts.push(`sandbox=off`);
+      if (runtimeTools.length > 0) parts.push(`runtime=[${runtimeTools.join(", ")}]`);
+      if (Array.isArray(fsPerms) && fsPerms.length > 0) parts.push(`fs=[${(fsPerms as string[]).join(", ")}]`);
+      if (fsWorkspaceOnly === false) parts.push(`fs.workspaceOnly=false`);
+      exposedContexts.push(`${name} (${parts.join("; ")})`);
+    }
+  };
+
+  if (agentDefaults) checkAgentExposure("agents.defaults", agentDefaults);
+  if (agentList) {
+    for (const [agentName, agentConf] of Object.entries(agentList)) {
+      checkAgentExposure(`agents.list.${agentName}`, agentConf);
+    }
+  }
+
+  const isMultiUser = multiUserSignals.length > 0 && exposedContexts.length > 0;
+
+  if (multiUserSignals.length > 0 || exposedContexts.length > 0) {
+    const descParts: string[] = [];
+    descParts.push("Heuristic signals indicate this gateway may be reachable by multiple users:");
+    for (const signal of multiUserSignals) {
+      descParts.push(`- ${signal}`);
+    }
+    if (exposedContexts.length > 0) {
+      descParts.push(
+        "Runtime/process tools are exposed without full sandboxing in at least one context.",
+      );
+      descParts.push("Potential high-impact tool exposure contexts:");
+      for (const ctx of exposedContexts) {
+        descParts.push(`- ${ctx}`);
+      }
+    }
+    descParts.push(
+      "OpenClaw's default security model is personal-assistant (one trusted operator boundary), not hostile multi-tenant isolation on one shared gateway.",
+    );
+
+    checks.push({
+      id: "trust-model",
+      name: "Potential Multi-User Setup Detected",
+      passed: !isMultiUser,
+      severity: "high",
+      description: descParts.join("\n"),
+      recommendation:
+        "If users may be mutually untrusted, split trust boundaries (separate gateways + credentials). If you intentionally run shared-user access, set agents.defaults.sandbox.mode=\"all\", keep tools.fs.workspaceOnly=true, deny runtime/fs/web tools unless required, and keep personal/private identities + credentials off that runtime.",
+    });
+  }
+
+  // 12. Attack surface summary (info-level)
+  const hooks = config
+    ? (config as Record<string, unknown>)["hooks"] as Record<string, unknown> | undefined
+    : undefined;
+  const tools = config
+    ? (config as Record<string, unknown>)["tools"] as Record<string, unknown> | undefined
+    : undefined;
+  const browser = config
+    ? (config as Record<string, unknown>)["browser"] as Record<string, unknown> | undefined
+    : undefined;
+
+  // Count channel groups
+  let openGroups = 0;
+  let allowlistGroups = 0;
+  if (channels) {
+    for (const channelVal of Object.values(channels)) {
+      const ch = channelVal as ChannelConfig | undefined;
+      if (ch?.groupPolicy === "open") openGroups++;
+      else if (ch?.groupPolicy === "allowlist") allowlistGroups++;
+    }
+  }
+
+  const surfaceParts: string[] = [];
+  surfaceParts.push(`groups: open=${openGroups}, allowlist=${allowlistGroups}`);
+  surfaceParts.push(`tools.elevated: ${tools?.["elevated"] !== false ? "enabled" : "disabled"}`);
+  surfaceParts.push(`hooks.webhooks: ${hooks?.["webhooks"] ? "enabled" : "disabled"}`);
+  surfaceParts.push(`hooks.internal: ${hooks?.["internal"] !== false ? "enabled" : "disabled"}`);
+  surfaceParts.push(`browser control: ${browser?.["enabled"] !== false ? "enabled" : "disabled"}`);
+  surfaceParts.push(
+    `trust model: personal assistant (one trusted operator boundary), not hostile multi-tenant on one shared gateway`,
+  );
+
+  checks.push({
+    id: "attack-surface",
+    name: "Attack Surface Summary",
+    passed: true, // Info-level, always "passes"
+    severity: "low",
+    description: surfaceParts.join("\n"),
+    recommendation:
+      "Review the attack surface summary above. Disable unused capabilities to reduce exposure.",
   });
 
   return checks;
