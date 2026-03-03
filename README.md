@@ -1,9 +1,6 @@
 # SecureSecrets
 
 A local-first security scanner that finds exposed API keys, tokens, and secrets on your machine before someone else does.
-<img width="935" height="774" alt="Securtiy-audit2" src="https://github.com/user-attachments/assets/9ba4f7b9-2652-49f5-9cb6-1b1379871934" />
-
-<img width="967" height="445" alt="Securtiy-audit1" src="https://github.com/user-attachments/assets/09496cb8-3d2a-41c9-809f-f767997b961a" />
 
 ## Features
 
@@ -14,7 +11,10 @@ A local-first security scanner that finds exposed API keys, tokens, and secrets 
 - **Light/Dark Theme** — Toggle between themes with localStorage persistence
 - **100% Local** — Nothing leaves your machine. All scanning and analysis runs on localhost.
 
-## Screenshots
+## Screenshots.
+<img width="935" height="774" alt="Securtiy-audit2" src="https://github.com/user-attachments/assets/9ba4f7b9-2652-49f5-9cb6-1b1379871934" />
+
+<img width="967" height="445" alt="Securtiy-audit1" src="https://github.com/user-attachments/assets/09496cb8-3d2a-41c9-809f-f767997b961a" />
 
 ### Overview Tab (Dark)
 Score gauge, severity distribution bar, metric cards, critical findings preview, and audit summary — all in one executive view.
