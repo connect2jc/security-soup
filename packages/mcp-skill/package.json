@@ -1,0 +1,16 @@
+{
+  "name": "@securesecrets/mcp-skill",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "securesecrets-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@securesecrets/engine": "*",
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@securesecrets/server",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@securesecrets/engine": "*",
+    "express": "^5.1.0",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.2",
+    "@types/cors": "^2.8.17"
+  }
+}

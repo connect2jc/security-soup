@@ -1,0 +1,24 @@
+{
+  "name": "securesecrets",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/engine",
+    "packages/cli",
+    "packages/web",
+    "packages/server",
+    "packages/mcp-skill"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/engine && npm run build -w packages/cli -w packages/server -w packages/mcp-skill && npm run build -w packages/web",
+    "build:engine": "npm run build -w packages/engine",
+    "build:cli": "npm run build -w packages/cli",
+    "build:web": "npm run build -w packages/web",
+    "build:server": "npm run build -w packages/server",
+    "test": "npm test -w packages/engine"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
