@@ -63,11 +63,45 @@ const RECOMMENDATIONS: Record<string, string> = {
     "Move this value to an environment variable or secret manager.",
 };
 
-function getRecommendation(patternId: string): string {
-  return (
+function getFileContext(filePath: string): string {
+  const p = filePath.toLowerCase();
+  if (p.includes("[git:")) return "git-history";
+  if (p.includes(".openclaw") && p.includes("auth-profiles")) return "openclaw-auth";
+  if (p.includes(".openclaw") && p.endsWith(".env")) return "openclaw-env";
+  if (p.includes(".openclaw") && (p.includes("memory") || p.endsWith(".md"))) return "openclaw-memory";
+  if (p.includes(".openclaw")) return "openclaw-config";
+  if (p.includes("mcp") && p.endsWith(".json")) return "mcp-config";
+  if (p.includes(".env")) return "env-file";
+  if (p.includes("_history")) return "shell-history";
+  if (p.includes(".zshrc") || p.includes(".bashrc") || p.includes(".zprofile") || p.includes(".bash_profile")) return "shell-rc";
+  return "source-code";
+}
+
+function getRecommendation(patternId: string, filePath: string): string {
+  const base =
     RECOMMENDATIONS[patternId] ??
-    "Move this secret to a secure environment variable or secret manager."
-  );
+    "Move this secret to a secure environment variable or secret manager.";
+  const ctx = getFileContext(filePath);
+
+  switch (ctx) {
+    case "openclaw-auth":
+    case "openclaw-config":
+      return `${base} In OpenClaw config files, replace the plaintext value with \${ENV_VAR} syntax to reference an environment variable.`;
+    case "openclaw-memory":
+      return `${base} Remove the secret from memory files immediately — these can be read by AI agents.`;
+    case "mcp-config":
+      return `${base} In MCP config, use the "env" block to pass environment variables instead of hardcoding values.`;
+    case "shell-history":
+      return `${base} Clear this entry from your shell history. The secret was likely pasted into a terminal.`;
+    case "shell-rc":
+      return `${base} Remove the export from your shell config and load secrets from a .env file instead.`;
+    case "git-history":
+      return `${base} This secret is in git history and should be considered compromised even if removed from current files.`;
+    case "env-file":
+      return `${base} Ensure this .env file is in .gitignore and has restricted permissions (chmod 600).`;
+    default:
+      return base;
+  }
 }
 
 /**
@@ -141,7 +175,7 @@ export function detectSecrets(
         line: i + 1,
         context: redact(match[0]),
         description: pat.description,
-        recommendation: getRecommendation(pat.id),
+        recommendation: getRecommendation(pat.id, filePath),
       });
     }
   }

@@ -50,7 +50,7 @@ export default function FindingCard({ finding }: { finding: Finding }) {
               </code>
             </div>
           </div>
-          <FixGuide patternId={finding.patternId} />
+          <FixGuide patternId={finding.patternId} filePath={finding.file} />
         </div>
       )}
     </div>
