@@ -4,38 +4,61 @@ import FindingCard from "./FindingCard";
 
 type Filter = "all" | Severity;
 
+const filterConfig: { key: Filter; label: string; color: string; activeBg: string }[] = [
+  { key: "all", label: "All", color: "text-slate-300", activeBg: "bg-slate-600/50 text-white" },
+  { key: "critical", label: "Critical", color: "text-red-400", activeBg: "bg-red-500/20 text-red-300 ring-1 ring-red-500/30" },
+  { key: "high", label: "High", color: "text-orange-400", activeBg: "bg-orange-500/20 text-orange-300 ring-1 ring-orange-500/30" },
+  { key: "medium", label: "Medium", color: "text-yellow-400", activeBg: "bg-yellow-500/20 text-yellow-300 ring-1 ring-yellow-500/30" },
+  { key: "low", label: "Low", color: "text-blue-400", activeBg: "bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/30" },
+];
+
 export default function FindingsList({ findings }: { findings: Finding[] }) {
   const [filter, setFilter] = useState<Filter>("all");
 
   const filtered =
     filter === "all" ? findings : findings.filter((f) => f.severity === filter);
 
-  const filters: Filter[] = ["all", "critical", "high", "medium", "low"];
+  const counts = {
+    all: findings.length,
+    critical: findings.filter((f) => f.severity === "critical").length,
+    high: findings.filter((f) => f.severity === "high").length,
+    medium: findings.filter((f) => f.severity === "medium").length,
+    low: findings.filter((f) => f.severity === "low").length,
+  };
 
   return (
     <div>
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {filters.map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-md text-sm border ${
-              filter === f
-                ? "bg-slate-700 border-slate-500"
-                : "border-slate-600 hover:bg-slate-800"
-            }`}
-          >
-            {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
+      {/* Filter bar */}
+      <div className="flex gap-2 mb-5 flex-wrap">
+        {filterConfig.map((f) => {
+          const isActive = filter === f.key;
+          const count = counts[f.key];
+          if (f.key !== "all" && count === 0) return null;
+          return (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+                isActive ? f.activeBg : "bg-slate-800/40 text-slate-400 hover:bg-slate-700/40 hover:text-slate-300"
+              }`}
+            >
+              {f.label}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${isActive ? "bg-white/10" : "bg-slate-700/50"}`}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
+
+      {/* Cards */}
       <div className="space-y-2">
         {filtered.length === 0 ? (
-          <p className="text-center text-slate-400 py-8">
-            No findings match this filter.
-          </p>
+          <div className="glass rounded-xl p-12 text-center">
+            <p className="text-slate-500">No findings match this filter.</p>
+          </div>
         ) : (
-          filtered.map((f) => <FindingCard key={f.id} finding={f} />)
+          filtered.map((f, i) => <FindingCard key={f.id} finding={f} index={i} />)
         )}
       </div>
     </div>
