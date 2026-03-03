@@ -32,3 +32,19 @@ export async function checkHealth(): Promise<boolean> {
     return false;
   }
 }
+
+export type Platform = "darwin" | "win32" | "linux";
+
+let cachedPlatform: Platform | null = null;
+
+export async function getPlatform(): Promise<Platform> {
+  if (cachedPlatform) return cachedPlatform;
+  try {
+    const res = await fetch(`${BASE}/platform`);
+    const data = await res.json();
+    cachedPlatform = data.platform as Platform;
+    return cachedPlatform;
+  } catch {
+    return "darwin"; // fallback
+  }
+}

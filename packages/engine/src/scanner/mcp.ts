@@ -6,26 +6,30 @@ import { detectSecrets } from "../detector/detector.js";
 import { walkFiles } from "./filesystem.js";
 
 /**
- * Known MCP client config file locations.
+ * Known MCP client config file locations (cross-platform).
  */
 function getMcpConfigPaths(): string[] {
   const home = homedir();
-  return [
-    // Claude Desktop
-    path.join(
-      home,
-      "Library",
-      "Application Support",
-      "Claude",
-      "claude_desktop_config.json"
-    ),
-    // Cursor
-    path.join(home, ".cursor", "mcp.json"),
-    // VS Code
-    path.join(home, ".vscode", "mcp.json"),
-    // Windsurf
-    path.join(home, ".codeium", "windsurf", "mcp_config.json"),
-  ];
+  const platform = process.platform;
+  const paths: string[] = [];
+
+  // Claude Desktop
+  if (platform === "darwin") {
+    paths.push(path.join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json"));
+  } else if (platform === "win32") {
+    paths.push(path.join(process.env.APPDATA ?? path.join(home, "AppData", "Roaming"), "Claude", "claude_desktop_config.json"));
+  } else {
+    paths.push(path.join(home, ".config", "claude", "claude_desktop_config.json"));
+  }
+
+  // Cursor
+  paths.push(path.join(home, ".cursor", "mcp.json"));
+  // VS Code
+  paths.push(path.join(home, ".vscode", "mcp.json"));
+  // Windsurf
+  paths.push(path.join(home, ".codeium", "windsurf", "mcp_config.json"));
+
+  return paths;
 }
 
 function extractJsonStrings(obj: unknown): string[] {

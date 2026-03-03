@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { getFixSteps, type FixStep } from "../lib/fixes";
+import { getPlatform, type Platform } from "../api";
 
 export default function FixGuide({
   patternId,
@@ -7,7 +9,13 @@ export default function FixGuide({
   patternId: string;
   filePath: string;
 }) {
-  const steps = getFixSteps(patternId, filePath);
+  const [platform, setPlatform] = useState<Platform>("darwin");
+
+  useEffect(() => {
+    getPlatform().then(setPlatform);
+  }, []);
+
+  const steps = getFixSteps(patternId, filePath, platform);
 
   return (
     <div className="mt-1 p-4 bg-blue-950/30 rounded-xl border border-blue-500/10">

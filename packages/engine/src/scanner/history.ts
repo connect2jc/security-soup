@@ -4,14 +4,28 @@ import { homedir } from "node:os";
 import type { Finding } from "../types.js";
 import { detectSecrets } from "../detector/detector.js";
 
-const HISTORY_FILES = [
-  ".zsh_history",
-  ".bash_history",
-  ".zshrc",
-  ".bashrc",
-  ".zprofile",
-  ".bash_profile",
-];
+function getHistoryFiles(): string[] {
+  const files = [
+    ".zsh_history",
+    ".bash_history",
+    ".zshrc",
+    ".bashrc",
+    ".zprofile",
+    ".bash_profile",
+  ];
+
+  // Windows: PowerShell history + profile
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA ?? path.join(homedir(), "AppData", "Roaming");
+    files.push(
+      path.join(appData, "Microsoft", "Windows", "PowerShell", "PSReadLine", "ConsoleHost_history.txt"),
+      path.join(homedir(), "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1"),
+      path.join(homedir(), "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1"),
+    );
+  }
+
+  return files;
+}
 
 async function fileExists(filePath: string): Promise<boolean> {
   try {
@@ -29,8 +43,9 @@ export async function scanShellHistory(): Promise<Finding[]> {
   const home = homedir();
   const findings: Finding[] = [];
 
-  for (const filename of HISTORY_FILES) {
-    const filePath = path.join(home, filename);
+  for (const filename of getHistoryFiles()) {
+    // Absolute paths (Windows PowerShell) vs relative (Unix dotfiles)
+    const filePath = path.isAbsolute(filename) ? filename : path.join(home, filename);
     if (!(await fileExists(filePath))) continue;
 
     try {

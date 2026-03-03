@@ -25,6 +25,10 @@ export const serveCommand = new Command("serve")
       res.json({ status: "ok" });
     });
 
+    app.get("/api/platform", (_req, res) => {
+      res.json({ platform: process.platform });
+    });
+
     app.post("/api/scan", async (req, res) => {
       try {
         const { path, deep } = req.body ?? {};
