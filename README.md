@@ -49,12 +49,64 @@ This starts the local server at `http://localhost:19384`. The scanner and web UI
 npm run build
 ```
 
+## MCP Integration
+
+SecureSecrets works as an MCP (Model Context Protocol) server, so any AI assistant that supports MCP can scan your machine for security issues directly.
+
+### Setup with Claude Desktop
+
+Add this to your Claude Desktop config (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "securesecrets": {
+      "command": "node",
+      "args": ["/path/to/security-soup/packages/cli/dist/mcp/index.js"]
+    }
+  }
+}
+```
+
+Replace `/path/to/security-soup` with the actual path where you cloned the repo.
+
+### Setup with Cursor / VS Code
+
+Add to your `.cursor/mcp.json` or `.vscode/mcp.json`:
+
+```json
+{
+  "securesecrets": {
+    "command": "node",
+    "args": ["/path/to/security-soup/packages/cli/dist/mcp/index.js"]
+  }
+}
+```
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `security_scan` | Scan for exposed secrets, API keys, and credentials. Optional `path` and `deep` (git history) parameters. |
+| `security_score` | Get a security score (0-100) for your machine's configuration. |
+| `check_skill` | Audit a specific installed skill's permissions and code safety. |
+
+Once connected, you can ask your AI assistant things like:
+- "Scan my machine for exposed secrets"
+- "What's my security score?"
+- "Check if the imap-smtp-email skill is safe"
+
+### MCP Config Scanning
+
+The scanner also automatically checks your MCP client configs (Claude Desktop, Cursor, VS Code, Windsurf) for hardcoded secrets. If it finds API keys in your MCP config, it'll recommend using the `env` block instead.
+
 ## Architecture
 
 ```
 packages/
   engine/     # Core scanning engine — pattern matching, scoring, audit checks
-  cli/        # CLI interface and local HTTP server
+  cli/        # CLI interface, local HTTP server, and MCP server
+  mcp-skill/  # Standalone MCP skill package
   web/        # React + Vite frontend (dashboard UI)
 ```
 
