@@ -111,6 +111,10 @@ CSS custom properties in `app.css` with `:root` (dark default) and `[data-theme=
 - Reverse Proxy Headers
 - Attack Surface Summary
 
+## Author
+
+Built by JC — [@connect2jc](https://x.com/connect2jc)
+
 ## License
 
-Private — all rights reserved.
+MIT
