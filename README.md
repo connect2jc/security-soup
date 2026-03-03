@@ -1,6 +1,9 @@
 # SecureSecrets
 
 A local-first security scanner that finds exposed API keys, tokens, and secrets on your machine before someone else does.
+<img width="935" height="774" alt="Securtiy-audit2" src="https://github.com/user-attachments/assets/9ba4f7b9-2652-49f5-9cb6-1b1379871934" />
+
+<img width="967" height="445" alt="Securtiy-audit1" src="https://github.com/user-attachments/assets/09496cb8-3d2a-41c9-809f-f767997b961a" />
 
 ## Features
 
@@ -165,7 +168,7 @@ CSS custom properties in `app.css` with `:root` (dark default) and `[data-theme=
 
 ## Author
 
-Built by JC — [@connect2jc](https://x.com/connect2jc)
+Built by JC — [@iJigneshc](https://x.com/iJigneshc)
 
 ## License
 
