@@ -7,7 +7,15 @@ interface ScoreBreakdown {
 
 /**
  * Calculate security score from findings and audit checks.
- * Starts at 100, deducts per finding, adds bonuses.
+ * Starts at 100, deducts per unique secret issue found.
+ *
+ * Scoring approach:
+ *  - Group findings by (patternId + redacted context) so the same key
+ *    duplicated across 10 OpenClaw agent configs counts as ONE issue,
+ *    not 10 separate deductions.
+ *  - First unique issue per severity gets the full deduction.
+ *  - Subsequent unique issues of the same severity get diminishing deductions.
+ *  - Capped total deduction per severity so it never obliterates the score.
  */
 export function calculateScore(
   findings: Finding[],
@@ -15,29 +23,47 @@ export function calculateScore(
 ): ScoreBreakdown {
   let score = 100;
 
-  // Track deductions per pattern to apply diminishing returns
-  const patternCounts = new Map<string, number>();
-
+  // Deduplicate: same secret (same pattern + same redacted value) = one issue
+  const uniqueIssues = new Map<string, Finding>();
   for (const finding of findings) {
-    const count = patternCounts.get(finding.patternId) ?? 0;
-    patternCounts.set(finding.patternId, count + 1);
-    const isFirst = count === 0;
-
-    switch (finding.severity) {
-      case "critical":
-        score -= isFirst ? 25 : 12;
-        break;
-      case "high":
-        score -= isFirst ? 15 : 7;
-        break;
-      case "medium":
-        score -= isFirst ? 8 : 4;
-        break;
-      case "low":
-        score -= isFirst ? 3 : 1;
-        break;
+    const key = `${finding.patternId}::${finding.context}`;
+    if (!uniqueIssues.has(key)) {
+      uniqueIssues.set(key, finding);
     }
   }
+
+  // Base deductions per severity (first / subsequent unique issues)
+  const deductions: Record<string, [number, number, number]> = {
+    //                        first  subsequent  maxTotal
+    critical: [20, 5, 45],
+    high:     [12, 3, 30],
+    medium:   [ 6, 2, 16],
+    low:      [ 2, 1,  6],
+  };
+
+  // Track per-severity totals
+  const severityCounts = new Map<string, number>();
+  const severityDeducted = new Map<string, number>();
+
+  for (const finding of uniqueIssues.values()) {
+    const sev = finding.severity;
+    const count = severityCounts.get(sev) ?? 0;
+    severityCounts.set(sev, count + 1);
+
+    const [first, subsequent, maxTotal] = deductions[sev] ?? [5, 2, 20];
+    const alreadyDeducted = severityDeducted.get(sev) ?? 0;
+
+    if (alreadyDeducted >= maxTotal) continue; // cap reached
+
+    const deduction = count === 0 ? first : subsequent;
+    const capped = Math.min(deduction, maxTotal - alreadyDeducted);
+    score -= capped;
+    severityDeducted.set(sev, alreadyDeducted + capped);
+  }
+
+  // Audit check penalties: -3 per failed check, max -15
+  const failedAudits = auditChecks.filter((c) => !c.passed).length;
+  score -= Math.min(failedAudits * 3, 15);
 
   // Bonuses
   const hasCritical = findings.some((f) => f.severity === "critical");
@@ -48,8 +74,8 @@ export function calculateScore(
   if (!hasHigh) score += 3;
   if (allAuditPassed) score += 5;
 
-  // Floor at 0
-  score = Math.max(0, score);
+  // Floor at 0, ceiling at 100
+  score = Math.max(0, Math.min(100, score));
 
   return {
     score,
